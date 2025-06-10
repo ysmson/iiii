@@ -1,0 +1,33 @@
+video-learning-platform/
+├── pom.xml
+├── src/
+│   └── main/
+│       ├── java/
+│       │   └── tw/
+│       │       └── shawn/
+│       │           ├── dao/
+│       │           │   ├── VideoDAO.java
+│       │           │   ├── QuizDAO.java
+│       │           │   └── AnswerDAO.java
+│       │           ├── servlet/
+│       │           │   ├── GetVideoServlet.java
+│       │           │   ├── LoadQuizServlet.java
+│       │           │   ├── AutoGenerateQuizServlet.java
+│       │           │   ├── SubmitAnswerServlet.java
+│       │           │   └── QuizStatsServlet.java
+│       │           └── util/
+│       │               └── OpenAIHelper.java
+│       ├── resources/
+│       │   └── config.properties     ← API 金鑰與其他設定
+│       └── webapp/
+│           ├── index.html
+│           ├── quiz.html
+│           ├── result.html
+│           ├── video/
+│           │   └── sample.mp4
+│           └── js/
+│               ├── video.js
+│               ├── quiz.js
+│               └── result.js
+└── .gitignore（可選）
+給我這些檔案全部的程式碼

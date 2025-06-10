@@ -1,0 +1,20 @@
+# ❌ 忽略 Java 編譯產物
+target/
+*.class
+
+# ❌ 忽略 Eclipse 專案設定
+.settings/
+.project
+.classpath
+
+# ❌ 忽略 IntelliJ IDEA 設定
+.idea/
+*.iml
+
+# ❌ 忽略金鑰與敏感設定檔
+.env
+config.properties
+
+# ❌ 忽略作業系統產生的檔案
+.DS_Store
+Thumbs.db

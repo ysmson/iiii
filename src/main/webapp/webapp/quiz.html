@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>影片測驗系統</title>
+<style>
+/* 網頁整體字型、背景色 */
+body {
+	font-family: "Microsoft JhengHei", sans-serif;
+	padding: 20px;
+	background-color: #f4f4f4;
+}
+
+/* 題目表單區塊與間距 */
+#quizForm {
+	margin-top: 20px;
+}
+
+/* 按鈕樣式（黑底白字） */
+button {
+	background-color: #333;
+	color: white;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	margin-right: 10px;
+}
+
+/* 滑鼠移入按鈕變色 */
+button:hover {
+	background-color: #555;
+}
+</style>
+</head>
+<body>
+	<!-- 頁面標題 -->
+	<h2>🎬 測驗系統</h2>
+
+	<!-- 影片選擇下拉選單 -->
+	<label for="videoSelect">選擇影片：</label>
+	<select id="videoSelect"></select>
+	<br>
+	<br>
+
+	<!-- YouTube 播放器嵌入 iframe -->
+	<iframe id="videoPlayer" width="560" height="315" frameborder="0"
+		allowfullscreen></iframe>
+	<br>
+	<br>
+
+	<!-- 出題模式選擇（預設為本地題庫） -->
+	<label><input type="radio" name="mode" value="local" checked>
+		本地題庫</label>
+	<label><input type="radio" name="mode" value="gpt"> GPT
+		自動出題</label>
+	<br>
+	<br>
+
+	<!-- 按鈕：產生題目 -->
+	<button id="generateBtn">產生題目</button>
+
+	<!-- 題目呈現區域（動態生成） -->
+	<form id="quizForm"></form>
+
+	<!-- 提交作答按鈕（預設隱藏） -->
+	<button id="submitBtn" style="display: none">提交作答</button>
+
+
+	<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // === DOM 元件對應 ===
+    	const userId = localStorage.getItem("userId");
+    	if (!userId) {
+    		  alert("⚠️ 尚未登入，請先登入！");
+    		  window.location.href = "login.html"; // ✅ 可選導向登入頁
+    		  return;
+    		}
+
+
+    const videoSelect = document.getElementById("videoSelect");       // 下拉選單
+    const videoPlayer = document.getElementById("videoPlayer");       // YouTube 播放器
+    const generateBtn = document.getElementById("generateBtn");       // 產生題目按鈕
+    const quizForm = document.getElementById("quizForm");             // 題目表單區塊
+    const submitBtn = document.getElementById("submitBtn");           // 提交按鈕
+    const modeRadios = document.getElementsByName("mode");            // 出題模式
+
+    // 題目數與難度設定（預設）
+    const quizNum = 5;
+    const difficulty = "basic";
+
+    // === 1. 載入影片清單 ===
+    fetch("/video-learning-platform/api/videoList")
+      .then(res => res.json())
+      .then(data => {
+        videoSelect.innerHTML = ""; // 清空選單
+        data.forEach((video, index) => {
+          const opt = document.createElement("option");
+          opt.textContent = `#${index + 1} ${video.title.replace(/^#\d+\s*/, "")}`;
+          opt.value = video.videoId;
+          videoSelect.appendChild(opt);
+        });
+
+        // ✅ 載入第一部影片到播放器
+        if (data.length > 0) {
+          videoPlayer.src = "https://www.youtube.com/embed/" + data[0].videoId;
+          videoSelect.value = data[0].videoId;
+        }
+      });
+
+    // === 2. 更換影片播放 ===
+    videoSelect.addEventListener("change", () => {
+      videoPlayer.src = "https://www.youtube.com/embed/" + videoSelect.value;
+    });
+
+    // === 3. 點擊「產生題目」 ===
+    generateBtn.addEventListener("click", () => {
+      const videoId = videoSelect.value;
+      if (!videoId) {
+        alert("⚠️ 請先選擇影片！");
+        return;
+      }
+
+      quizForm.innerHTML = "<p>⏳ 正在產生題目...</p>"; // 顯示載入中
+      submitBtn.style.display = "none"; // 隱藏提交按鈕
+
+      // ✅ 取得出題模式
+      let mode = "local";
+      for (let r of modeRadios) {
+        if (r.checked) {
+          mode = r.value;
+          break;
+        }
+      }
+
+      // ✅ 設定 API 路徑
+      const endpoint =
+        mode === "local"
+          ? `/video-learning-platform/api/loadQuiz?videoId=${videoId}&source=local`
+          : `/video-learning-platform/api/autoGenerateQuiz?videoId=${videoId}&quizNum=${quizNum}&difficulty=${difficulty}`;
+
+      // === 發送請求，載入題目 ===
+      fetch(endpoint)
+        .then(res => {
+          if (!res.ok) throw new Error(`伺服器錯誤 (${res.status})`);
+          return res.json();
+        })
+        .then(data => {
+          quizForm.innerHTML = ""; // 清空舊題目
+          if (!Array.isArray(data) || data.length === 0) {
+            throw new Error("回傳資料不是題目陣列");
+          }
+
+          // ✅ 建立每一題的 HTML 結構
+          data.forEach((q, index) => {
+            const div = document.createElement("div");
+            div.dataset.quizId = q.quizId || q.id;
+            div.dataset.source = mode === "gpt" ? "gpt" : "local";
+            div.dataset.correctAnswer = q.answer;
+
+            div.innerHTML = `
+              <p><strong>第 ${index + 1} 題：${q.question}</strong></p>
+              ${q.options.map((opt, i) => `
+                <label>
+                  <input type="radio" name="q${index}" value="${i}">
+                  ${String.fromCharCode(65 + i)}. ${opt}
+                </label><br>
+              `).join("")}
+              <hr>
+            `;
+            quizForm.appendChild(div);
+          });
+
+          submitBtn.style.display = "block"; // 顯示提交按鈕
+        })
+        .catch(err => {
+          quizForm.innerHTML = `<p style="color:red;">❌ 題目載入失敗：${err.message}</p>`;
+          submitBtn.style.display = "none";
+        });
+    });
+
+    // === 4. 提交作答 ===
+    submitBtn.addEventListener("click", async () => {
+      const totalQuestions = quizForm.querySelectorAll("div").length;
+
+      // ✅ 檢查是否每題都有選擇
+      for (let i = 0; i < totalQuestions; i++) {
+        const checked = quizForm.querySelector(`input[name="q${i}"]:checked`);
+        if (!checked) {
+          alert("⚠️ 請完成所有題目再提交！");
+          return;
+        }
+      }
+
+      // ✅ 封裝使用者作答資料
+      const answers = [...quizForm.querySelectorAll("div")].map((div, index) => {
+        const selectedInput = div.querySelector(`input[name="q${index}"]:checked`);
+        const selectedOptionIndex = selectedInput ? parseInt(selectedInput.value) : -1;
+        const selectedOptionText = selectedInput?.nextSibling.textContent.trim().replace(/^[A-D]\.\s*/, "");
+
+        return {
+          quizId: div.dataset.quizId,
+          videoId: videoSelect.value,
+          selectedOption: selectedOptionIndex,
+          selectedText: selectedOptionText,
+          correctAnswer: div.dataset.correctAnswer,
+          source: div.dataset.source,
+          question: div.querySelector("p")?.textContent.replace(/^第 \d+ 題：/, "").trim() || "",
+          options: [...div.querySelectorAll("label")].map(label => {
+            const text = label.textContent.trim();
+            return text.replace(/^[A-D]\.\s*/, "");
+          })
+        };
+      });
+
+      // ✅ 發送至後端 API
+      try {
+        const res = await fetch("/video-learning-platform/api/submitAnswer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+        	userId: parseInt(userId) || -1,
+            answers: answers
+          })
+        });
+
+        if (!res.ok) throw new Error("後端錯誤");
+
+        const result = await res.json();
+        alert(`✅ 成功送出作答！你答對 ${result.correctCount} / ${totalQuestions} 題`);
+        const selectedMode = [...modeRadios].find(r => r.checked)?.value || "local";
+        window.location.href = `result.html?videoId=${videoSelect.value}&userId=${userId}&source=${selectedMode}`;
+
+
+
+      } catch (err) {
+        alert("❌ 作答提交失敗，請稍後再試！");
+      }
+    });
+  });
+</script>
+</body>
+</html>
+

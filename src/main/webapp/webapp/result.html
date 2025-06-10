@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>測驗結果</title>
+  <style>
+    /* === 整體樣式設定 === */
+    body {
+      font-family: "Microsoft JhengHei", sans-serif;
+      background-color: #111;  /* 深色背景 */
+      color: #fff;
+      padding: 20px;
+    }
+
+    /* 上方總結區塊樣式 */
+    .result-summary {
+      background-color: #222;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    /* 每題詳解卡片樣式 */
+    .quiz-result {
+      background-color: #222;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .quiz-result ul {
+      list-style-type: none;
+      padding-left: 0;
+    }
+
+    /* 選項的內距與底色樣式 */
+    .quiz-result li {
+      margin: 6px 0;
+      padding: 6px 10px;
+      border-radius: 5px;
+    }
+
+    /* 正確選項的樣式：綠底白字 */
+    .correct-option {
+      background-color: #2ecc71;
+      color: white;
+      font-weight: bold;
+    }
+
+    /* 錯誤選項樣式：紅底白字 */
+    .wrong-option {
+      background-color: #e74c3c;
+      color: white;
+      font-weight: bold;
+    }
+
+    /* 未選擇的普通選項樣式 */
+    .normal-option {
+      color: #ccc;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      color: #999;
+      font-size: 14px;
+    }
+
+    .quiz-result h3 {
+      color: #fff;
+    }
+
+    /* 題組分類標題樣式 */
+    h2.section-title {
+      margin-top: 30px;
+      color: #f1c40f;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 題目總結區塊 -->
+  <div class="result-summary">
+    <h2>📊 測驗結果</h2>
+    <p>🎬 影片 ID：<span id="video-id"></span></p>
+    <p>👤 使用者 ID：<span id="user-id"></span></p>
+    <p>📝 作答題數：<span id="total"></span></p>
+    <p>✅ 答對題數：<span id="correct"></span></p>
+    <p>📉 正確率：<span id="accuracy"></span></p>
+  </div>
+
+  <!-- GPT 題組顯示區塊 -->
+  <div id="gptContainer"></div>
+  <!-- 本地題組顯示區塊 -->
+  <div id="localContainer"></div>
+
+  <!-- 頁尾 -->
+  <div class="footer">客服信箱</div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // 讀取 URL 參數
+      const params = new URLSearchParams(location.search);
+      const videoId = params.get("videoId");
+      const userId = localStorage.getItem("userId"); // 從 localStorage 動態取得
+
+
+      // 填入影片與使用者資訊
+      document.getElementById("video-id").textContent = videoId;
+      document.getElementById("user-id").textContent = userId;
+
+      // === 取得作答統計資訊（正確題數、總題數）===
+      fetch(`/video-learning-platform/api/QuizStatsServlet?videoId=${videoId}&userId=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("total").textContent = data.total;
+          document.getElementById("correct").textContent = data.correct;
+          document.getElementById("accuracy").textContent =
+            data.total > 0 ? `${((data.correct / data.total) * 100).toFixed(1)}%` : "N/A";
+        });
+
+      // === 取得每一題詳解 ===
+      // === 取得每一題詳解 ===
+fetch(`/video-learning-platform/api/answerDetail?videoId=${videoId}&userId=${userId}`)
+  .then(res => {
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  })
+  .then(data => {
+    const source = (params.get("source") || "local").toLowerCase();
+    const filtered = data.filter(item => (item.source || "").toLowerCase() === source);
+
+    const container = source === "gpt"
+      ? document.getElementById("gptContainer")
+      : document.getElementById("localContainer");
+
+    const label = source === "gpt" ? "🤖 GPT 題目" : "📘 本地題目";
+
+    renderQuestions(filtered, container, label);
+  })
+  .catch(err => {
+    console.error("❌ 詳解載入失敗", err);
+    document.getElementById("gptContainer").innerHTML = "<p>⚠️ 載入詳解時發生錯誤。</p>";
+  });
+
+
+      // === 顯示每一題題目與選項詳解 ===
+      function renderQuestions(questions, container, titleText) {
+        if (questions.length === 0) {
+          container.innerHTML = `<p>⚠️ 沒有 ${titleText} 題目紀錄</p>`;
+          return;
+        }
+
+        // 🔧 清除空白、標點的正規化函數
+        const normalize = str =>
+          (str || "")
+            .replace(/[\s\p{P}\p{S}（）]+/gu, "")
+            .toLowerCase();
+
+        // 題組標題（如 GPT 題目、本地題目）
+        const title = document.createElement("h2");
+        title.textContent = titleText;
+        title.className = "section-title";
+        container.appendChild(title);
+
+        questions.forEach((item, index) => {
+          const options = [item.option1, item.option2, item.option3, item.option4];
+
+          // ✅ 使用者作答的索引（支援數字或文字選項）
+          let userIndex = parseInt(item.selectedIndex ?? item.selected_option);
+          if (isNaN(userIndex)) {
+            const sel = (item.selected_option || "").toUpperCase();
+            if (["A", "B", "C", "D"].includes(sel)) {
+              userIndex = sel.charCodeAt(0) - 65;
+            } else {
+              const textMatch = options.findIndex(opt => normalize(opt) === normalize(item.selected_option));
+              if (textMatch !== -1) userIndex = textMatch;
+            }
+          }
+
+          // ✅ 正確選項的索引（支援 index 或文字答案）
+          let correctIndex = parseInt(item.correctIndex ?? item.correct_index);
+          if (isNaN(correctIndex) || correctIndex < 0 || correctIndex > 3) {
+            if (item.answer) {
+              correctIndex = options.findIndex(opt => normalize(opt) === normalize(item.answer));
+            }
+          }
+
+          const isValid = userIndex >= 0 && correctIndex >= 0 && userIndex < 4 && correctIndex < 4;
+          const isCorrect = isValid && userIndex === correctIndex;
+          const icon = isCorrect ? "⭕" : "❌";
+
+          // === 顯示選項列表 ===
+          const ul = document.createElement("ul");
+          options.forEach((opt, i) => {
+            const li = document.createElement("li");
+            li.textContent = String.fromCharCode(65 + i) + ". " + opt;
+
+            // 根據選項狀態加上樣式
+            if (i === correctIndex) {
+              li.className = "correct-option";
+            } else if (i === userIndex && !isCorrect) {
+              li.className = "wrong-option";
+            } else {
+              li.className = "normal-option";
+            }
+
+            ul.appendChild(li);
+          });
+
+          // === 顯示整體題目卡片 ===
+          const div = document.createElement("div");
+          div.className = "quiz-result";
+          div.innerHTML = `<h3>${index + 1}. ${icon}</h3><p><b>${item.question}</b></p>`;
+          div.appendChild(ul);
+          container.appendChild(div);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

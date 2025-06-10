@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>影音學習平台首頁</title>
+  <!-- 載入 YouTube iframe API，用於嵌入播放器 -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <style>
+    /* === 🌑 全站樣式設定 === */
+    body {
+      margin: 0;
+      background-color: #0d0d0d;
+      font-family: "Microsoft JhengHei", sans-serif;
+      padding-top: 72px;    /* 導覽列保留高度 */
+      padding-bottom: 48px; /* 底部 Footer 保留空間 */
+    }
+
+    /* === 🧭 頂部固定導覽列 === */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 999;
+      background-color: #fff;
+      color: #000;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 32px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .navbar nav a {
+      color: #000;
+      margin-left: 24px;
+      text-decoration: none;
+      font-size: 16px;
+    }
+
+    /* === 📦 中央卡片區塊 === */
+    .card {
+      background-color: white;
+      color: black;
+      max-width: 640px;
+      margin: 60px auto;
+      padding: 32px;
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      text-align: center;
+    }
+
+    /* === 🎬 影片選單與播放器 === */
+    #videoSelect {
+      width: 100%;
+      max-width: 360px;
+      margin-top: 10px;
+    }
+
+    #player {
+      display: none;
+      width: 560px;
+      height: 315px;
+      background-color: #000;
+      margin: 24px auto 0 auto;
+    }
+
+    /* === 🖱️ 按鈕樣式 === */
+    button {
+      padding: 10px 24px;
+      background-color: #000;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s;
+      margin: 12px 8px 0 8px;
+    }
+
+    button:hover {
+      background-color: #333;
+    }
+
+    /* === 📫 頁面底部 Footer === */
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: #fff;
+      color: #000;
+      text-align: center;
+      padding: 12px;
+      font-size: 14px;
+      box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.15);
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- === 導覽列 === -->
+  <header class="navbar">
+    <div class="logo">Logo</div>
+    <nav>
+      <a href="#">測驗中心</a>
+      <a href="#">商城</a>
+      <a href="#">經驗值</a>
+      <a href="#">我的資料</a>
+      <a href="#">設定</a>
+    </nav>
+  </header>
+
+  <!-- === 中央內容卡片 === -->
+  <main class="card">
+    <!-- 使用者經驗值顯示 -->
+    <p id="expText" style="font-weight: bold;">目前經驗值：0</p>
+
+    <!-- 經驗值累積說明 -->
+    <h4 style="background-color: #fff8c6;">經驗值增加方式: 每觀看影片十秒增加 1 經驗值</h4>
+
+    <!-- 影片下拉選單 -->
+    <div>
+      <label for="videoSelect">請選擇影片：</label><br>
+      <select id="videoSelect"></select>
+    </div>
+
+    <!-- 嵌入 YouTube 播放器 -->
+    <div id="player"></div>
+
+    <!-- 按鈕與說明文字 -->
+    <p>📖 請觀賞影片後，點擊下方按鈕進入題目設定</p>
+    <button id="goToQuizSettingBtn">前往題目設定</button>
+    <button onclick="sendExp('watch', 5)">🖋 手動送出經驗值</button>
+  </main>
+
+  <!-- === 固定底部 Footer === -->
+  <footer>客服信箱</footer>
+
+  <!-- === JavaScript 程式區 === -->
+  <script>
+  const userId = localStorage.getItem("userId"); // 從 localStorage 動態取得
+    const contextPath = "/video-learning-platform";
+
+    let player;
+    let videoList = [];
+    let watchSeconds = 0;
+    let lastReportedTime = 0;
+    let trackingInterval = null;
+    let playerReady = false;
+
+    const videoSelect = document.getElementById("videoSelect");
+
+    // === 讀取目前經驗值 ===
+    function loadExp() {
+      fetch(`${contextPath}/api/getExp?userId=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("expText").textContent = `目前經驗值：${data.exp}`;
+        })
+        .catch(err => console.error("❌ 經驗值載入失敗", err));
+    }
+
+    // === 發送經驗值累積請求 ===
+    function sendExp(type, amount) {
+      fetch(`${contextPath}/api/exp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, source: type, exp: amount })
+      })
+      .then(res => res.text())
+      .then(msg => {
+        console.log("✅ 經驗值送出成功：" + msg);
+        loadExp(); // 重載經驗值顯示
+      })
+      .catch(err => console.error("❌ 經驗值送出失敗", err));
+    }
+
+    // === 監控 YouTube 播放狀態 ===
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        clearInterval(trackingInterval);
+        trackingInterval = setInterval(() => {
+          const currentTime = Math.floor(player.getCurrentTime());
+          if (currentTime > lastReportedTime) {
+            watchSeconds += currentTime - lastReportedTime;
+            lastReportedTime = currentTime;
+            if (watchSeconds >= 10) {
+              sendExp("watch", 1); // 每累積10秒送出1經驗值
+              watchSeconds = 0;
+            }
+          }
+        }, 1000);
+      } else {
+        clearInterval(trackingInterval);
+      }
+    }
+
+    // === 建立 YouTube 播放器 ===
+    function createPlayer(videoId) {
+      player = new YT.Player('player', {
+        height: '315',
+        width: '560',
+        videoId: videoId,
+        events: {
+          onReady: () => {
+            playerReady = true;
+            document.getElementById("player").style.display = "block";
+            player.playVideo(); // 預設自動播放
+          },
+          onStateChange: onPlayerStateChange
+        }
+      });
+    }
+
+    // === YouTube API 載入完成後觸發 ===
+    window.onYouTubeIframeAPIReady = function () {
+      if (window._pendingVideoId) {
+        createPlayer(window._pendingVideoId);
+        window._pendingVideoId = null;
+      }
+    };
+
+    // === 載入影片清單並建立選單 ===
+    fetch(`${contextPath}/api/videoList`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data || data.length === 0) {
+          alert("⚠️ 尚無影片，請先新增！");
+          return;
+        }
+
+        videoList = data;
+        const defaultVideoId = data[0].videoId;
+
+        data.forEach((video, i) => {
+          const opt = document.createElement("option");
+          opt.value = video.videoId;
+          opt.textContent = `#${i + 1} ${video.title.replace(/^#\d+\s*/, '')}`;
+          videoSelect.appendChild(opt);
+        });
+
+        videoSelect.value = defaultVideoId;
+
+        // 建立播放器（若 API 已載入）
+        if (typeof YT !== "undefined" && YT.Player) {
+          createPlayer(defaultVideoId);
+        } else {
+          window._pendingVideoId = defaultVideoId;
+        }
+      });
+
+    // === 切換影片播放 ===
+    videoSelect.addEventListener("change", () => {
+      const selected = videoSelect.value;
+      if (player && typeof player.loadVideoById === "function") {
+        player.loadVideoById(selected);
+        watchSeconds = 0;
+        lastReportedTime = 0;
+      }
+    });
+
+    // === 點擊前往題目設定頁面 ===
+    document.getElementById("goToQuizSettingBtn").onclick = () => {
+      const selectedVideoId = videoSelect.value;
+      window.location.href = `${contextPath}/quizSetting?videoId=${selectedVideoId}`;
+    };
+
+    // === 初始載入經驗值 ===
+    window.addEventListener("load", () => {
+      loadExp();
+    });
+  </script>
+</body>
+</html>
